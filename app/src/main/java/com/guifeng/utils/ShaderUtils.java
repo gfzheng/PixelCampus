@@ -1,4 +1,4 @@
-package com.guifeng.pixelcampus;
+package com.guifeng.utils;
 
 import android.opengl.GLES30;
 

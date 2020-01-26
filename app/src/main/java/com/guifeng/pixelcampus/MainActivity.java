@@ -2,9 +2,10 @@ package com.guifeng.pixelcampus;
 
 import androidx.appcompat.app.AppCompatActivity;
 
-import android.graphics.Color;
 import android.opengl.GLSurfaceView;
 import android.os.Bundle;
+
+import com.guifeng.samples.TriangleRenderer;
 
 public class MainActivity extends AppCompatActivity {
 
@@ -21,7 +22,8 @@ public class MainActivity extends AppCompatActivity {
 
         //创建渲染器
         //GLSurfaceView.Renderer renderer = new ColorRenderer(Color.GRAY);
-        GLSurfaceView.Renderer renderer = new TriangleRenderer();
+        //GLSurfaceView.Renderer renderer = new TriangleRenderer(this);
+        GLSurfaceView.Renderer renderer = new TextureRenderer(this);
         //GLSurfaceView.Renderer renderer = new NativeColorRenderer(Color.GRAY);
         mGLSurfaceView.setRenderer(renderer);
     }

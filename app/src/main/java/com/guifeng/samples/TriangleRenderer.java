@@ -1,7 +1,10 @@
-package com.guifeng.pixelcampus;
+package com.guifeng.samples;
 
+import android.content.Context;
 import android.opengl.GLES30;
 import android.opengl.GLSurfaceView;
+
+import com.guifeng.utils.ShaderUtils;
 
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
@@ -43,7 +46,10 @@ public class TriangleRenderer implements GLSurfaceView.Renderer {
                     + "fragColor = vColor; \n"
                     + "}\n";
 
-    public TriangleRenderer() {
+    private static Context instance;
+
+    public TriangleRenderer(Context app) {
+        instance = app;
         //分配内存空间,每个浮点型占4字节空间
         vertexBuffer = ByteBuffer.allocateDirect(vertexPoints.length * 4)
                 .order(ByteOrder.nativeOrder())
