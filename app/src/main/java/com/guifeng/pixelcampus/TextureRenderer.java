@@ -116,16 +116,65 @@ public class TextureRenderer implements GLSurfaceView.Renderer {
     public void onSurfaceChanged(GL10 gl, int width, int height) {
         GLES30.glViewport(0, 0, width, height);
 
-        final float aspectRatio = width > height ?
-                (float) width / (float) height :
-                (float) height / (float) width;
+        //正交矩阵:right, left, bottom, top, near, far
+        //  2/(r-l), 0, 0, -(r+l)/(r-l)
+        //  0, 2/(t-b), 0, -(t+b)/(t-b)
+        //  0, 0, -2/(f-n), -(f+n)/(f-n)
+        //  0, 0, 0, 1
+
+        //横屏与竖屏根据长宽比配置
+        //先单位阵
+        Matrix.setIdentityM(mMatrix, 0);
+        // near, far 都是 1, -1
+        mMatrix[10] = -1f;
+
+//        final float aspectRatio = width > height ?
+//                (float) width / (float) height :
+//                (float) height / (float) width;
+
+        // 缩放比例，1为满屏
+        float zoom = 1f;
+        // 滚屏
+        float scroll_x = 0.2f;
+        float scroll_y = 0.4f;
+
         if (width > height) {
             //横屏
-            Matrix.orthoM(mMatrix, 0, -aspectRatio, aspectRatio, -1f, 1f, -1f, 1f);
+            //等价于：
+            //Matrix.orthoM(mMatrix, 0, -1 * aspectRatio, 1 * aspectRatio, -1f, 1f, -1f, 1f);
+            mMatrix[0] = zoom * (float) height / (float) width;
+            mMatrix[5] = zoom;
+            mMatrix[12] = scroll_x * mMatrix[0];
+            mMatrix[13] = scroll_y * mMatrix[5];
         } else {
             //竖屏
-            Matrix.orthoM(mMatrix, 0, -1f, 1f, -aspectRatio, aspectRatio, -1f, 1f);
+            mMatrix[0] = zoom;
+            mMatrix[5] = zoom * (float) width / (float) height;
+            mMatrix[12] = scroll_x * mMatrix[0];
+            mMatrix[13] = scroll_y * mMatrix[5];
+            //等价于：
+            //Matrix.orthoM(mMatrix, 0, -1f, 1f, -1*aspectRatio, 1*aspectRatio, -1f, 1f);
+
         }
+
+        float invW2 = 2f / width;
+        float invH2 = 2f / height;
+        float camera_x = 1f;
+        float camera_y = 1f;
+
+        //Matrix.setIdentityM(mMatrix, 0);
+        //mMatrix[0] = +zoom * invW2;
+        //mMatrix[5] = -zoom * invH2;
+
+        //mMatrix[12] += -1 + camera_x * invW2 - (scroll_x) * mMatrix[0];
+        //mMatrix[13] += +1 - camera_y * invH2 - (scroll_y) * mMatrix[5];
+        //Matrix.setIdentityM(mMatrix, 0);
+        //Matrix.translateM(mMatrix, 0, 0, 0, -1);
+        //Matrix.scaleM(mMatrix, 0,2f / width, 2f / height, 1);
+        //Matrix.translateM( mMatrix, 0, 1f, 1f, 0 );
+        //Matrix.scaleM( mMatrix, 0, zoom, zoom, 0 );
+        //Matrix.translateM( mMatrix,0, scroll_x, scroll_y, -1f );
+        //Matrix.rotateM(mMatrix,0, 45f,1,0f, 0f);
     }
 
     @Override
