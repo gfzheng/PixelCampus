@@ -1,11 +1,11 @@
-package com.guifeng.pixelcampus;
+package com.guifeng.samples;
 
 import androidx.appcompat.app.AppCompatActivity;
 
 import android.opengl.GLSurfaceView;
 import android.os.Bundle;
 
-import com.guifeng.samples.TriangleRenderer;
+import com.guifeng.samples.TextureRenderer;
 
 public class MainActivity extends AppCompatActivity {
 

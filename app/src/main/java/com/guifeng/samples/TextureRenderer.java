@@ -1,4 +1,4 @@
-package com.guifeng.pixelcampus;
+package com.guifeng.samples;
 
 import android.content.Context;
 import android.opengl.GLES20;
