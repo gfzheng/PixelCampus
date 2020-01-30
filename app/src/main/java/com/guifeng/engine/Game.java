@@ -28,8 +28,17 @@ import java.util.ArrayList;
 import javax.microedition.khronos.egl.EGLConfig;
 import javax.microedition.khronos.opengles.GL10;
 
-public class Game extends Activity implements GLSurfaceView.Renderer, View.OnTouchListener  {
+public class Game extends Activity implements GLSurfaceView.Renderer, View.OnTouchListener {
     public static Game instance;
+
+    // 瓦片结构：一个瓦片由2个三角形组成，4个顶点，6个索引
+    // 0---1
+    // | \ |
+    // 3---2
+    public static final short[] CELL_IDX = {0, 1, 2, 0, 2, 3};
+    public static final int CELL_SIZE = CELL_IDX.length;
+    private static ShortBuffer indices;
+    private static int indexSize = 0;
 
     // Actual size of the screen
     public static int width;
@@ -53,72 +62,17 @@ public class Game extends Activity implements GLSurfaceView.Renderer, View.OnTou
     public static float timeScale = 1f;
     public static float elapsed = 0f;
 
-    private final FloatBuffer vertexBuffer, mTexVertexBuffer;
+    // 缩放比例，1为满屏
+    float zoom;
+    // 滚屏坐标
+    float scroll_x;
+    float scroll_y;
 
-    private final ShortBuffer mVertexIndexBuffer;
+    private int mProgram;           //着色器
+    private int uMatrixLocation;    //变换矩阵在着色器中的位置
+    private float[] mMatrix = new float[16];    //变换矩阵
 
-    private int mProgram;
-
-    private int textureId;
-
-    /**
-     * 顶点坐标
-     * (x,y,z)
-     */
-    private float[] POSITION_VERTEX = new float[]{
-            0f, 0f, 0f,     //顶点坐标V0
-            1f, 1f, 0f,     //顶点坐标V1
-            -1f, 1f, 0f,    //顶点坐标V2
-            -1f, -1f, 0f,   //顶点坐标V3
-            1f, -1f, 0f     //顶点坐标V4
-    };
-
-    /**
-     * 纹理坐标
-     * (s,t)
-     */
-    private static final float[] TEX_VERTEX = {
-            0.5f, 0.5f, //纹理坐标V0
-            1f, 0f,     //纹理坐标V1
-            0f, 0f,     //纹理坐标V2
-            0f, 1.0f,   //纹理坐标V3
-            1f, 1.0f    //纹理坐标V4
-    };
-
-    /**
-     * 索引
-     */
-    private static final short[] VERTEX_INDEX = {
-            0, 1, 2,  //V0,V1,V2 三个顶点组成一个三角形
-            0, 2, 3,  //V0,V2,V3 三个顶点组成一个三角形
-            0, 3, 4,  //V0,V3,V4 三个顶点组成一个三角形
-            0, 4, 1   //V0,V4,V1 三个顶点组成一个三角形
-    };
-
-    private int uMatrixLocation;
-
-    private float[] mMatrix = new float[16];
-
-    public Game(){
-        //分配内存空间,每个浮点型占4字节空间
-        vertexBuffer = ByteBuffer.allocateDirect(POSITION_VERTEX.length * 4)
-                .order(ByteOrder.nativeOrder())
-                .asFloatBuffer();
-        //传入指定的坐标数据
-        vertexBuffer.put(POSITION_VERTEX);
-        vertexBuffer.position(0);
-
-        mTexVertexBuffer = ByteBuffer.allocateDirect(TEX_VERTEX.length * 4)
-                .order(ByteOrder.nativeOrder())
-                .asFloatBuffer()
-                .put(TEX_VERTEX);
-        mTexVertexBuffer.position(0);
-
-        mVertexIndexBuffer = ByteBuffer.allocateDirect(VERTEX_INDEX.length * 2)
-                .order(ByteOrder.nativeOrder())
-                .asShortBuffer()
-                .put(VERTEX_INDEX);
-        mVertexIndexBuffer.position(0);
+    public Game() {
     }
 
     @Override
@@ -146,54 +100,52 @@ public class Game extends Activity implements GLSurfaceView.Renderer, View.OnTou
         instance = this;
 
         DisplayMetrics m = new DisplayMetrics();
-        getWindowManager().getDefaultDisplay().getMetrics( m );
+        getWindowManager().getDefaultDisplay().getMetrics(m);
         density = m.density;
 
         try {
-            version = getPackageManager().getPackageInfo( getPackageName(), 0 ).versionName;
+            version = getPackageManager().getPackageInfo(getPackageName(), 0).versionName;
         } catch (PackageManager.NameNotFoundException e) {
             version = "???";
         }
 
-        view = new GLSurfaceView( this );
-        view.setEGLContextClientVersion( 3 );
-        view.setEGLConfigChooser( false );
-        view.setRenderer( this );
-        view.setOnTouchListener( this );
-        setContentView( view );
-
-
+        view = new GLSurfaceView(this);
+        view.setEGLContextClientVersion(3);
+        view.setEGLConfigChooser(false);
+        view.setRenderer(this);
+        view.setOnTouchListener(this);
+        setContentView(view);
     }
 
     @Override
     public void onSurfaceCreated(GL10 gl, EGLConfig config) {
-        GLES30.glEnable( GL10.GL_BLEND );
+        GLES30.glEnable(GL10.GL_BLEND);
         // For premultiplied alpha:
         // GLES20.glBlendFunc( GL10.GL_ONE, GL10.GL_ONE_MINUS_SRC_ALPHA );
-        GLES30.glBlendFunc( GL10.GL_SRC_ALPHA, GL10.GL_ONE_MINUS_SRC_ALPHA );
+        GLES30.glBlendFunc(GL10.GL_SRC_ALPHA, GL10.GL_ONE_MINUS_SRC_ALPHA);
 
-        GLES30.glEnable( GL10.GL_SCISSOR_TEST );
+        GLES30.glEnable(GL10.GL_SCISSOR_TEST);
 
         //TextureCache.reload();
 
         //设置背景颜色
         GLES30.glClearColor(0.5f, 0.5f, 0.5f, 0.5f);
 
-        //编译
+        //编译着色器
         final int vertexShaderId = ShaderUtils.compileVertexShader(ResUtils.readResource(instance, R.raw.vertex_texture_shader));
         final int fragmentShaderId = ShaderUtils.compileFragmentShader(ResUtils.readResource(instance, R.raw.fragment_texture_shader));
         //链接程序片段
         mProgram = ShaderUtils.linkProgram(vertexShaderId, fragmentShaderId);
-
+        //转换矩阵
         uMatrixLocation = GLES30.glGetUniformLocation(mProgram, "u_Matrix");
 
         //加载纹理
-        textureId = TextureUtils.loadTexture(instance, R.drawable.badges);
+        //textureId = TextureUtils.loadTexture(instance, R.drawable.badges);
     }
 
     @Override
     public void onSurfaceChanged(GL10 gl, int width, int height) {
-        GLES20.glViewport( 0, 0, width, height );
+        GLES20.glViewport(0, 0, width, height);
 
         Game.width = width;
         Game.height = height;
@@ -215,10 +167,10 @@ public class Game extends Activity implements GLSurfaceView.Renderer, View.OnTou
 //                (float) height / (float) width;
 
         // 缩放比例，1为满屏
-        float zoom = 1f;
+        zoom = 4f / 32 / 16;
         // 滚屏
-        float scroll_x = 0.2f;
-        float scroll_y = 0.4f;
+        scroll_x = 0f;
+        scroll_y = 0f;
 
         if (width > height) {
             //横屏
@@ -232,8 +184,8 @@ public class Game extends Activity implements GLSurfaceView.Renderer, View.OnTou
             //竖屏
             mMatrix[0] = zoom;
             mMatrix[5] = zoom * (float) width / (float) height;
-            mMatrix[12] = scroll_x * mMatrix[0];
-            mMatrix[13] = scroll_y * mMatrix[5];
+            mMatrix[12] = (-32 * 8 + scroll_x) * mMatrix[0];
+            mMatrix[13] = (-32 * 8 + scroll_y) * mMatrix[5];
             //等价于：
             //Matrix.orthoM(mMatrix, 0, -1f, 1f, -1*aspectRatio, 1*aspectRatio, -1f, 1f);
 
@@ -254,39 +206,83 @@ public class Game extends Activity implements GLSurfaceView.Renderer, View.OnTou
         update();
 
         //NoosaScript.get().resetCamera();
-        GLES30.glScissor( 0, 0, width, height );
-        GLES30.glClear( GLES20.GL_COLOR_BUFFER_BIT );
+        GLES30.glScissor(0, 0, width, height);
+        GLES30.glClear(GLES20.GL_COLOR_BUFFER_BIT);
         draw();
     }
 
     protected void draw() {
-        //draw scene
-        //GLES30.glClear(GLES30.GL_COLOR_BUFFER_BIT);
-
-        //使用程序片段
+        // 使用程序片段
         GLES30.glUseProgram(mProgram);
-
+        // 设置着色器矩阵
         GLES30.glUniformMatrix4fv(uMatrixLocation, 1, false, mMatrix, 0);
 
-        GLES30.glEnableVertexAttribArray(0);
-        GLES30.glVertexAttribPointer(0, 3, GLES30.GL_FLOAT, false, 0, vertexBuffer);
+        //draw scene
+    }
 
+    // 画地图瓦片集合
+    public void drawQuadSet(FloatBuffer vertices, int size, int tx) {
+
+        if (size == 0) {
+            return;
+        }
+
+        vertices.position(0);
+        GLES30.glEnableVertexAttribArray(0);
+        GLES30.glVertexAttribPointer(0, 2, GLES30.GL_FLOAT, false, 4 * Float.SIZE / 8, vertices);
+
+        vertices.position(2);
         GLES30.glEnableVertexAttribArray(1);
-        GLES30.glVertexAttribPointer(1, 2, GLES30.GL_FLOAT, false, 0, mTexVertexBuffer);
+        GLES30.glVertexAttribPointer(1, 2, GLES30.GL_FLOAT, false, 4 * Float.SIZE / 8, vertices);
 
         GLES30.glActiveTexture(GLES30.GL_TEXTURE0);
         //绑定纹理
-        GLES30.glBindTexture(GLES30.GL_TEXTURE_2D, textureId);
+        GLES30.glBindTexture(GLES30.GL_TEXTURE_2D, tx);
 
-        // 绘制
-        GLES30.glDrawElements(GLES30.GL_TRIANGLES, VERTEX_INDEX.length, GLES30.GL_UNSIGNED_SHORT, mVertexIndexBuffer);
+        GLES20.glDrawElements(
+                GLES20.GL_TRIANGLES,
+                CELL_SIZE * size,
+                GLES20.GL_UNSIGNED_SHORT,
+                getCellIndices(size));
 
+    }
+
+    // 瓦片的三角面顶点索引生成
+    public static ShortBuffer getCellIndices(int size) {
+
+        if (size > indexSize) {
+
+            // TODO: Optimize it!
+
+            indexSize = size;
+            indices = ByteBuffer.
+                    allocateDirect(size * CELL_SIZE * Short.SIZE / 8).
+                    order(ByteOrder.nativeOrder()).
+                    asShortBuffer();
+
+            short[] values = new short[size * 6];
+            int pos = 0;
+            int limit = size * 4;
+            for (int ofs = 0; ofs < limit; ofs += 4) {
+                values[pos++] = (short) (ofs + 0);
+                values[pos++] = (short) (ofs + 1);
+                values[pos++] = (short) (ofs + 2);
+                values[pos++] = (short) (ofs + 0);
+                values[pos++] = (short) (ofs + 2);
+                values[pos++] = (short) (ofs + 3);
+            }
+
+            indices.put(values);
+            indices.position(0);
+        }
+
+        return indices;
     }
 
     @Override
     public boolean onTouch(View v, MotionEvent event) {
         synchronized (motionEvents) {
-            motionEvents.add( MotionEvent.obtain( event ) );
+            motionEvents.add(MotionEvent.obtain(event));
         }
         return true;
     }
@@ -300,7 +296,7 @@ public class Game extends Activity implements GLSurfaceView.Renderer, View.OnTou
 
     }
 
-    public static void vibrate( int milliseconds ) {
-        ((Vibrator)instance.getSystemService( VIBRATOR_SERVICE )).vibrate( milliseconds );
+    public static void vibrate(int milliseconds) {
+        ((Vibrator) instance.getSystemService(VIBRATOR_SERVICE)).vibrate(milliseconds);
     }
 }
